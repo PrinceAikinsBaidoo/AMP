@@ -1,13 +1,4 @@
-# Agent Market Protocol (AMP)
 
-> **Tether Hackathon Galáctica — WDK Edition 1**
-> Autonomous AI agent economic coordination on Ethereum Sepolia, powered entirely by Tether WDK.
-
----
-
-## What It Does
-
-AMP is a three-agent system where autonomous AI agents hire each other, pay each other in USDT, and invest their earnings on-chain — all without any human intervention.
 
 1. **Agent A** (Treasury Manager) posts a task with a free-form description and locks the reward in USDT escrow
 2. **Agent B** and **Agent B2** (competing workers) race to claim the task — first to accept wins the right to work and earn the reward
@@ -170,10 +161,18 @@ npm run mint-usdt
 
 ## Run
 
-### Happy path (APPROVED — all 3 layers pass)
+### Full two-cycle demo (runs automatically on `npm start`)
 ```bash
 npm start
 ```
+
+**Cycle 1 — Happy Path:** Agent B wins the race → Claude tool_use fetches live Aave/Compound rates → Agent C validates (3 layers, APPROVED) → escrow released to B → both A and B auto-supply WETH to Aave V3.
+
+**Cycle 2 — Adversarial Path:** Agent B2 wins the race (no startup delay) → submits fabricated 500%/499% APY data → Agent C Layer 2 sanity check catches it (REJECTED) → escrow refunded to A. Agent B exits gracefully when it detects another worker claimed the task.
+
+---
+
+### Manual injection demos (single-cycle, for targeted testing)
 
 ### Demo: Layer 2 rejection — injected bad APY data
 ```bash
@@ -197,8 +196,9 @@ Each demo tests a different guard in the 3-layer validation pipeline:</p>
 
 | Demo | Injection | Layer that fires | Outcome |
 |---|---|---|---|
-| `npm start` | none | all pass | APPROVED, escrow paid |
-| `demo:reject` | fake 500% APY | Layer 2 — APY bounds | REJECTED, refund |
+| `npm start` Cycle 1 | none | all pass | APPROVED, escrow paid, both agents supply to Aave |
+| `npm start` Cycle 2 | B2 injects fake 500% APY | Layer 2 — APY bounds | REJECTED, escrow refunded |
+| `demo:reject` | fake 500% APY via env | Layer 2 — APY bounds | REJECTED, refund |
 | `demo:layer1` | malformed struct | Layer 1 — Zod schema | REJECTED, refund |
 | `demo:layer2` | wrong protocol | Layer 2 — best-protocol check | REJECTED, refund |
 
@@ -230,7 +230,7 @@ src/
   agents/
     AgentA.ts          Task Creator — posts task, locks escrow, deploys to Aave on settlement
     AgentB.ts          Worker (primary) — races for tasks, passes to Claude tool_use loop, invests earnings
-    AgentB2.ts         Worker (competing) — second market participant, races Agent B, observes market lifecycle
+    AgentB2.ts         Worker (competing) — loses cycle 1 (startup delay), wins cycle 2 and submits fraudulent data to test validation
     AgentC.ts          Validator — 3-layer QA, controls escrow release/refund
   core/
     TaskRegistry.ts    EventEmitter state machine (OPEN → IN_PROGRESS → PENDING_VALIDATION → SETTLED/FAILED)
@@ -239,6 +239,8 @@ src/
   defi/
     AaveAdapter.ts     Live Aave V3 supply rate via Data Provider contract
     CompoundAdapter.ts Live Compound III supply rate via Comet contract
+    EthPriceAdapter.ts Live ETH/USD price via Chainlink or Uniswap TWAP
+    GasPriceAdapter.ts Current network gas price via RPC
     AaveSupplyService.ts  Wrap ETH → WETH → supply to Aave V3, with reserve cap pre-check
   ai/
     ClaudeClient.ts    executeAgentTask() with tool_use loop + getValidatorVerdict()
@@ -251,7 +253,7 @@ src/
     WDKClient.ts       WDK wrapper — getAddress, sendUSDT, sendTransaction, approve
   dashboard/
     Dashboard.ts       Chalk terminal display
-  index.ts             Entrypoint — runs all 3 agents concurrently
+  index.ts             Entrypoint — orchestrates two market cycles (happy path + adversarial) sequentially
 
 scripts/
   generate-wallets.ts  Generate BIP39 seed phrases
