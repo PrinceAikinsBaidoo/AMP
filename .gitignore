@@ -1,0 +1,17 @@
+# Environment — contains seed phrases and API keys — NEVER commit
+.env
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
