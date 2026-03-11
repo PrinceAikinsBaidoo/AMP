@@ -6,6 +6,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "demo:reject": "cross-env INJECT_BAD_DATA=true tsx src/index.ts",
+    "demo:layer1": "cross-env INJECT_SCHEMA_FAIL=true tsx src/index.ts",
+    "demo:layer2": "cross-env INJECT_WRONG_PROTOCOL=true tsx src/index.ts",
     "build": "tsc",
     "generate-wallets": "tsx scripts/generate-wallets.ts",
     "dev": "nodemon --exec tsx src/index.ts",

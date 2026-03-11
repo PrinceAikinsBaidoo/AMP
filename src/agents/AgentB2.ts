@@ -32,6 +32,10 @@ export class AgentB2 {
     log('Agent B2', `Wallet ready — entering task market as a competing worker`)
     log('Agent B2', `Scanning for OPEN tasks every ${POLL_MS / 1000}s...`)
 
+    // Slight startup delay so Agent B (the primary worker) has time to claim
+    // the first task. B2 is a competing worker — it should occasionally lose.
+    await sleep(13_000)
+
     let raceLostLogged  = false
     let settledLogged   = false
 

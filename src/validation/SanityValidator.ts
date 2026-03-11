@@ -60,9 +60,15 @@ export function validateSanity(result: TaskResult): {
     )
   }
 
+  const successReason = failed.length === 0
+    ? result.protocols.map(p => `${p.name} ${p.supplyAPY.toFixed(4)}%`).join(' | ') +
+      ` → rec: ${result.recommendation.protocol} @ ${result.recommendation.apy.toFixed(4)}%` +
+      ` (best-protocol ✓, age ${ageMs}ms ✓)`
+    : undefined
+
   return {
     passed:       failed.length === 0,
-    reason:       failed[0],
+    reason:       failed.length === 0 ? successReason : failed[0],
     failedChecks: failed,
   }
 }

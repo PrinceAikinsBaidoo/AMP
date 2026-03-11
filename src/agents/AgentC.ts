@@ -60,6 +60,15 @@ export class AgentC {
       timestamp: result.timestamp,
     }
 
+    // Print the actual data under review so every validation line is auditable
+    log('Agent C', `Data source: ${result.dataSource}  |  age: ${Date.now() - result.timestamp}ms`)
+    for (const p of result.protocols) {
+      log('Agent C', `  ${p.name.padEnd(10)} APY: ${p.supplyAPY.toFixed(4)}%  rawRate: ${p.rawRate}`)
+    }
+    log('Agent C', `  rec → ${result.recommendation.protocol} @ ${result.recommendation.apy.toFixed(4)}%`)
+    const reasoning = result.recommendation.reasoning
+    log('Agent C', `  reasoning: "${reasoning.slice(0, 120)}${reasoning.length > 120 ? '…' : ''}"`)
+
     const verdict = await runFullValidation(result, rawRates)
 
     logValidation('Layer 1  Schema', verdict.layer1.passed, verdict.layer1.reason)

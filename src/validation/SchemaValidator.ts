@@ -27,7 +27,13 @@ const TaskResultSchema = z.object({
 
 export function validateSchema(result: unknown): { passed: boolean; reason?: string } {
   const parsed = TaskResultSchema.safeParse(result)
-  if (parsed.success) return { passed: true }
+  if (parsed.success) {
+    const r = parsed.data
+    return {
+      passed: true,
+      reason: `${r.protocols.length} protocols, uuid taskId, reasoning ${r.recommendation.reasoning.length} chars`,
+    }
+  }
   return {
     passed: false,
     reason: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', '),

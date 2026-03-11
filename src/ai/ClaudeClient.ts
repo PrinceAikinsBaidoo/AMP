@@ -235,15 +235,16 @@ Compound III supply APY: ${rawRates.compound}%
 </raw_data>
 
 Evaluate on three criteria:
-1. CONSISTENCY: Does the recommendation match the raw rate data?
+1. CONSISTENCY: Does the recommendation match the raw rate data? Cite the specific APY values.
 2. SOUNDNESS: Is the reasoning logical and substantive?
 3. INTEGRITY: Any signs of fabricated, inconsistent, or suspicious data?
 
 Respond ONLY with valid JSON. No preamble. No backticks.
+The "reason" field MUST reference the actual APY numbers and recommended protocol from the submission — not generic statements.
 
 {
   "verdict": "APPROVED" | "REJECTED",
-  "reason": "<one clear sentence explanation>",
+  "reason": "<sentence that names the recommended protocol, its APY, and why the recommendation is correct or incorrect>",
   "flags": ["<specific issue if any>"]
 }`
 }

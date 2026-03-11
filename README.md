@@ -170,17 +170,37 @@ npm run mint-usdt
 
 ## Run
 
-### Happy path (APPROVED result)
+### Happy path (APPROVED — all 3 layers pass)
 ```bash
 npm start
 ```
 
-### Rejection demo (injected bad data → Agent C rejects)
+### Demo: Layer 2 rejection — injected bad APY data
 ```bash
 npm run demo:reject
 ```
+Sets `INJECT_BAD_DATA=true`. Claude's tool calls return fake 500%/499% APY values. Layer 2 sanity check catches the out-of-bounds rates. Layers 2 & 3 output is skipped — escrow refunded to Agent A.
 
-This sets `INJECT_BAD_DATA=true` — Claude's tool calls return fake 500%/499% APY values. Layer 2 sanity check catches the anomaly and the escrow is refunded to Agent A.
+### Demo: Layer 1 rejection — malformed result
+```bash
+npm run demo:layer1
+```
+Sets `INJECT_SCHEMA_FAIL=true`. Agent B bypasses Claude and submits a structurally broken result (non-UUID taskId, missing protocols, missing recommendation). Zod rejects it instantly — Layers 2 & 3 are never reached. Escrow refunded.
+
+### Demo: Layer 2 rejection — wrong protocol recommended
+```bash
+npm run demo:layer2
+```
+Sets `INJECT_WRONG_PROTOCOL=true`. Claude fetches live rates normally, but the recommendation is overridden to the **lower**-yield protocol before submission. Layer 2 sanity check #5 ("must recommend the highest-yield option") rejects it. Escrow refunded.
+
+Each demo tests a different guard in the 3-layer validation pipeline:</p>
+
+| Demo | Injection | Layer that fires | Outcome |
+|---|---|---|---|
+| `npm start` | none | all pass | APPROVED, escrow paid |
+| `demo:reject` | fake 500% APY | Layer 2 — APY bounds | REJECTED, refund |
+| `demo:layer1` | malformed struct | Layer 1 — Zod schema | REJECTED, refund |
+| `demo:layer2` | wrong protocol | Layer 2 — best-protocol check | REJECTED, refund |
 
 ---
 
@@ -281,3 +301,21 @@ npx tsx scripts/check-reserve.ts
 | Aave Pool Address Provider | `0x012bAC54348C0E635dCAc9D5FB99f06F24136C9A` |
 | Compound III (USDC Comet) | `0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e` |
 | Aave Faucet | `0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D` |
+
+---
+
+## AMP as a Protocol Primitive
+
+AMP is architected for extension at every layer. None of the core components are hardcoded to specific protocols, chains, or agent counts — the design decisions compound.
+
+**Adding protocols is a one-file change.**
+The adapter pattern means adding Morpho Blue, Spark, or Euler requires writing one adapter and registering one tool in `ClaudeClient.ts`. Agent B, Agent C, and the validation pipeline require zero changes. Claude reads the task description and decides which tools to call — it handles new protocols automatically.
+
+**The validation pipeline is independently extensible.**
+Each layer is isolated behind a single function call in `ValidationOrchestrator.ts`. Layer 2 sanity rules are additive — new checks are a `failed.push()`. A Layer 4 on-chain attestation layer (Merkle proof of the validated result submitted to a verifier contract) slots in after Layer 3 without touching the existing layers.
+
+**The task system is chain-agnostic.**
+`TaskRegistry` is an in-process EventEmitter today. The same interface works over a smart contract, a pubsub network, or a cross-chain message relay — Agent B and Agent C only call `acceptTask`, `submitResult`, and listen for events. Swapping the transport is transparent to the agents.
+
+**Market mechanics scale naturally.**
+Agent B2 demonstrates that the worker market is real — multiple independent agents compete for tasks and only one earns. Reputation scoring (on-chain approval rate), dynamic rewards, and slashing bonds are logical extensions of the same escrow and registry primitives already in place.

@@ -57,10 +57,31 @@ export class AgentB {
   }
 
   protected async doWork(task: Task, _wallet: WDKClient): Promise<void> {
-    const injectBad = process.env.INJECT_BAD_DATA === 'true'
-    if (injectBad) log('Agent B', '⚠  INJECT_BAD_DATA=true — tool results will contain fake 500% APY')
+    const injectBad           = process.env.INJECT_BAD_DATA        === 'true'
+    const injectSchemaFail    = process.env.INJECT_SCHEMA_FAIL     === 'true'
+    const injectWrongProtocol = process.env.INJECT_WRONG_PROTOCOL  === 'true'
+
+    if (injectBad)           log('Agent B', '⚠  INJECT_BAD_DATA=true — fake 500%/499% APY injected into tool results (Layer 2 target)')
+    if (injectSchemaFail)    log('Agent B', '⚠  INJECT_SCHEMA_FAIL=true — will submit malformed result with missing fields (Layer 1 target)')
+    if (injectWrongProtocol) log('Agent B', '⚠  INJECT_WRONG_PROTOCOL=true — will recommend the lower-yield protocol (Layer 2 target)')
 
     log('Agent B', `Reading task: "${task.description.slice(0, 72)}..."`)
+
+    // ── INJECTION: Schema failure (Layer 1 target) ────────────────────────────
+    // Bypass Claude entirely and submit a structurally broken result.
+    // Zod rejects it immediately — Layers 2 & 3 are skipped. Escrow refunded.
+    if (injectSchemaFail) {
+      const malformed = {
+        taskId:   'NOT-A-VALID-UUID',      // fails z.string().uuid()
+        workerId: this.address,
+        // deliberately missing: timestamp, protocols, recommendation, dataSource
+      }
+      log('Agent B', 'Submitting malformed result — missing timestamp, protocols, recommendation...')
+      this.registry.submitResult(task.id, malformed as any)
+      log('Agent B', 'Malformed result submitted — PENDING_VALIDATION. Waiting for Agent C...')
+      return
+    }
+
     log('Agent B', 'Handing off to Claude — it will decide which protocols to query...')
 
     // Claude reads the task description and calls on-chain tools autonomously
@@ -73,7 +94,21 @@ export class AgentB {
     for (const p of protocols) {
       log('Agent B', `${p.name.padEnd(10)} APY: ${p.supplyAPY.toFixed(4)}%`)
     }
-    log('Agent B', `Claude recommends: ${recommendation.protocol} @ ${recommendation.apy.toFixed(4)}%`)
+
+    // ── INJECTION: Wrong protocol (Layer 2 target) ───────────────────────────
+    // Override Claude's recommendation to the LOWER-yield option post-fetch.
+    // Layer 2 check: "must recommend the highest-yield protocol" catches this.
+    if (injectWrongProtocol && protocols.length >= 2) {
+      const worst = protocols.reduce((a, b) => a.supplyAPY < b.supplyAPY ? a : b)
+      recommendation.protocol  = worst.name
+      recommendation.apy       = worst.supplyAPY
+      recommendation.reasoning =
+        `Recommending ${worst.name} for portfolio diversification and concentration risk reduction. ` +
+        `By accepting a lower yield we avoid overexposure to a single high-APY protocol, distributing treasury capital across multiple venues for resilience.`
+      log('Agent B', `⚠  Override: recommending ${worst.name} @ ${worst.supplyAPY.toFixed(4)}% (lower-yield — Layer 2 injection)`)
+    } else {
+      log('Agent B', `Claude recommends: ${recommendation.protocol} @ ${recommendation.apy.toFixed(4)}%`)
+    }
 
     const result: TaskResult = {
       taskId:    task.id,
