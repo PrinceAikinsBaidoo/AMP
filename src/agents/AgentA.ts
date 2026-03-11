@@ -21,12 +21,15 @@ const REWARD       = process.env.TASK_REWARD_USDT ?? '5.0'
 const DEADLINE_SEC = Number(process.env.TASK_DEADLINE_SECONDS ?? '60')
 const TREASURY_DEPLOY_AMOUNT = '0.002'  // Agent A supplies 0.002 WETH (~$6) based on the recommendation
 
+const DEFAULT_TASK = `DeFi yield analysis: compare Aave V3 vs Compound III USDT supply APY on Sepolia. Also check the current ETH/USD price and network gas fees to assess overall market conditions. Recommend the highest-yield protocol with full reasoning that includes market context.`
+
 export class AgentA {
   address = ''
 
   constructor(
     private registry: TaskRegistry,
-    private escrow: EscrowManager
+    private escrow: EscrowManager,
+    private taskDescription = DEFAULT_TASK,
   ) {}
 
   async run(): Promise<void> {
@@ -41,7 +44,7 @@ export class AgentA {
     }
 
     const task = this.registry.postTask({
-      description: `DeFi yield analysis: compare Aave V3 vs Compound III USDT supply APY on Sepolia. Also check the current ETH/USD price and network gas fees to assess overall market conditions. Recommend the highest-yield protocol with full reasoning that includes market context.`,
+      description: this.taskDescription,
       reward:      REWARD,
       deadline:    DEADLINE_SEC,
       postedBy:    this.address,

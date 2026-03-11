@@ -84,3 +84,12 @@ export function printSection(title: string): void {
   console.log(chalk.bold(` ${title}`))
   console.log(chalk.gray('─'.repeat(65)))
 }
+
+export function printCycleHeader(cycleNum: number, subtitle: string): void {
+  const label = `CYCLE ${cycleNum} — ${subtitle}`
+  const pad   = Math.max(0, 54 - label.length)
+  const color = cycleNum === 1 ? chalk.cyan.bold : chalk.yellow.bold
+  console.log('\n' + color('╔══════════════════════════════════════════════════════════╗'))
+  console.log(color(`║  ${label}${' '.repeat(pad)}║`))
+  console.log(color('╚══════════════════════════════════════════════════════════╝\n'))
+}

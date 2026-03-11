@@ -13,7 +13,7 @@
 import 'dotenv/config'
 import { createWDKClient, WDKClient } from '../wallet/WDKClient.js'
 import { TaskRegistry } from '../core/TaskRegistry.js'
-import { Task, TaskResult } from '../core/types.js'
+import { Task, TaskResult, TaskStatus } from '../core/types.js'
 import { executeAgentTask } from '../ai/ClaudeClient.js'
 import { supplyToAave } from '../defi/AaveSupplyService.js'
 import { log, printSection } from '../dashboard/Dashboard.js'
@@ -26,7 +26,10 @@ const SUPPLY_AMOUNT = '0.001'  // Agent B supplies 0.001 WETH (~$3) of its earni
 export class AgentB {
   address = ''
 
-  constructor(private registry: TaskRegistry) {}
+  constructor(
+    private registry: TaskRegistry,
+    private forceInjectBad = false,
+  ) {}
 
   async run(): Promise<void> {
     const wallet = await createWDKClient(process.env.AGENT_B_SEED_PHRASE!, RPC)
@@ -44,6 +47,15 @@ export class AgentB {
         this.registry.acceptTask(acceptedTask.id, this.address)
         log('Agent B', `Task accepted — ID: ${acceptedTask.id.slice(0, 8)}…  Reward: ${acceptedTask.reward} USDT`)
       } else {
+        // Another worker claimed the task — exit gracefully
+        const claimed = this.registry.getAllTasks().filter(
+          t => t.status !== TaskStatus.OPEN
+        )
+        if (claimed.length > 0) {
+          log('Agent B', `Lost the race — another worker is handling the task. Standing by.`)
+          wallet.dispose()
+          return
+        }
         await sleep(POLL_MS)
       }
     }
@@ -57,7 +69,7 @@ export class AgentB {
   }
 
   protected async doWork(task: Task, _wallet: WDKClient): Promise<void> {
-    const injectBad           = process.env.INJECT_BAD_DATA        === 'true'
+    const injectBad           = this.forceInjectBad || process.env.INJECT_BAD_DATA === 'true'
     const injectSchemaFail    = process.env.INJECT_SCHEMA_FAIL     === 'true'
     const injectWrongProtocol = process.env.INJECT_WRONG_PROTOCOL  === 'true'
 
