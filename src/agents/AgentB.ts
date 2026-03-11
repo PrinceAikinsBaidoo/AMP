@@ -1,8 +1,8 @@
 /**
  * AgentB.ts — Worker Agent
  *
- * Role: DeFi analyst that earns USDT by executing yield analysis tasks.
- * After receiving payment, autonomously supplies earnings to Aave V3 via WDK.
+ * Role: DeFi analyst that earns USDT by executing arbitrary on-chain research tasks.
+ * After receiving payment, autonomously supplies earnings to a lending protocol via WDK.
  *
  * Key design: Agent B is task-driven, not hardcoded.
  * doWork() passes the task description to Claude, which uses the tool_use API

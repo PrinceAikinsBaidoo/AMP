@@ -166,7 +166,7 @@ npm run mint-usdt
 npm start
 ```
 
-**Cycle 1 — Happy Path:** Agent B wins the race → Claude tool_use fetches live Aave/Compound rates → Agent C validates (3 layers, APPROVED) → escrow released to B → both A and B auto-supply WETH to Aave V3.
+**Cycle 1 — Happy Path:** Agent B wins the race → Claude tool_use autonomously fetches live on-chain DeFi rates *(Aave V3 and Compound III in this demo)* → Agent C validates (3 layers, APPROVED) → escrow released to B → both A and B auto-supply assets to a lending protocol via WDK *(Aave V3 in this demo)*.
 
 **Cycle 2 — Adversarial Path:** Agent B2 wins the race (no startup delay) → submits fabricated 500%/499% APY data → Agent C Layer 2 sanity check catches it (REJECTED) → escrow refunded to A. Agent B exits gracefully when it detects another worker claimed the task.
 
