@@ -41,7 +41,7 @@ export class AgentA {
     }
 
     const task = this.registry.postTask({
-      description: `Yield analysis: compare Aave V3 vs Compound III USDT supply APY on Sepolia. Recommend the highest-yield protocol with reasoning.`,
+      description: `DeFi yield analysis: compare Aave V3 vs Compound III USDT supply APY on Sepolia. Also check the current ETH/USD price and network gas fees to assess overall market conditions. Recommend the highest-yield protocol with full reasoning that includes market context.`,
       reward:      REWARD,
       deadline:    DEADLINE_SEC,
       postedBy:    this.address,

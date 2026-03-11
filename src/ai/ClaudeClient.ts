@@ -14,8 +14,10 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import { getAaveUSDTRate } from '../defi/AaveAdapter.js'
-import { getCompoundRate } from '../defi/CompoundAdapter.js'
+import { getAaveUSDTRate }    from '../defi/AaveAdapter.js'
+import { getCompoundRate }    from '../defi/CompoundAdapter.js'
+import { getEthPrice }        from '../defi/EthPriceAdapter.js'
+import { getNetworkGasPrice } from '../defi/GasPriceAdapter.js'
 import { TaskResult, RawRates } from '../core/types.js'
 
 const MODEL = 'claude-sonnet-4-6'
@@ -43,6 +45,20 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     description:
       'Fetch the current USDT supply APY from Compound III (Comet) on Ethereum Sepolia testnet. ' +
       'Returns annual percentage yield, raw contract rate, and data source.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'get_eth_price',
+    description:
+      'Fetch the current ETH/USD price from the Chainlink price feed on Sepolia. ' +
+      'Useful for treasury context — e.g. assessing whether to swap USDT to ETH before supplying.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'get_network_gas',
+    description:
+      'Fetch the current Sepolia network base fee (gwei) and estimated cost for a DeFi transaction. ' +
+      'Useful for assessing whether gas costs make a yield strategy economically viable right now.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
   {
@@ -80,22 +96,22 @@ interface ToolResult {
   source:  string
 }
 
-async function executeTool(name: string, injectBadData: boolean): Promise<ToolResult> {
+async function executeTool(name: string, injectBadData: boolean): Promise<object> {
   if (name === 'get_aave_supply_rate') {
     const rate = await getAaveUSDTRate()
-    return {
-      apy:     injectBadData ? 500.0 : rate.apy,
-      rawRate: rate.rawRate,
-      source:  rate.source,
-    }
+    return { apy: injectBadData ? 500.0 : rate.apy, rawRate: rate.rawRate, source: rate.source }
   }
   if (name === 'get_compound_supply_rate') {
     const rate = await getCompoundRate()
-    return {
-      apy:     injectBadData ? 499.0 : rate.apy,
-      rawRate: rate.rawRate,
-      source:  rate.source,
-    }
+    return { apy: injectBadData ? 499.0 : rate.apy, rawRate: rate.rawRate, source: rate.source }
+  }
+  if (name === 'get_eth_price') {
+    const data = await getEthPrice()
+    return { priceUsd: data.priceUsd, rawAnswer: data.rawAnswer, source: data.source }
+  }
+  if (name === 'get_network_gas') {
+    const data = await getNetworkGasPrice()
+    return { baseFeeGwei: data.baseFeeGwei, estimatedTxCostEth: data.estimatedTxCostEth, source: data.source }
   }
   throw new Error(`Unknown tool: ${name}`)
 }
@@ -176,8 +192,13 @@ export async function executeAgentTask(
 
       try {
         const result = await executeTool(block.name, injectBadData)
-        const protocolKey = block.name === 'get_aave_supply_rate' ? 'aave' : 'compound'
-        fetched[protocolKey] = result
+        // Only store protocol rate tools in `fetched` — used to build the protocols array
+        if (block.name === 'get_aave_supply_rate') {
+          fetched['aave'] = result as ToolResult
+        } else if (block.name === 'get_compound_supply_rate') {
+          fetched['compound'] = result as ToolResult
+        }
+        // ETH price and gas results are returned to Claude for reasoning context only
         resultContent = JSON.stringify(result)
       } catch (err: any) {
         resultContent = JSON.stringify({ error: err.message })
