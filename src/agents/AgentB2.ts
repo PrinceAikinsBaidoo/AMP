@@ -18,6 +18,7 @@ import { createWDKClient } from '../wallet/WDKClient.js'
 import { TaskRegistry } from '../core/TaskRegistry.js'
 import { Task, TaskResult, TaskStatus } from '../core/types.js'
 import { log } from '../dashboard/Dashboard.js'
+import { broadcast } from '../ws/EventBroadcaster.js'
 
 const RPC     = process.env.SEPOLIA_RPC_URL!
 const POLL_MS = 2_500   // slightly faster poll than Agent B (3s) — genuine race
@@ -37,6 +38,7 @@ export class AgentB2 {
     wallet.dispose()  // B2 only needs the address — winner is determined by the race
 
     log('Agent B2', `Wallet ready — entering task market as a competing worker`)
+    broadcast({ type: 'agent_ready', agent: 'B2', address: this.address, balance: '' })
     log('Agent B2', `Scanning for OPEN tasks every ${POLL_MS / 1000}s...`)
 
     if (this.delayMs > 0) {
@@ -54,6 +56,7 @@ export class AgentB2 {
         try {
           this.registry.acceptTask(task.id, this.address)
           log('Agent B2', `Task ${task.id.slice(0, 8)}… CLAIMED — starting analysis...`)
+          broadcast({ type: 'task_accepted', agent: 'B2', taskId: task.id, reward: task.reward })
 
           if (this.cycleNum === 2) {
             // Adversarial path: submit fraudulent inflated APY data
@@ -121,6 +124,7 @@ export class AgentB2 {
 
     this.registry.submitResult(task.id, fakeResult)
     log('Agent B2', `Fraudulent result submitted — PENDING_VALIDATION. Waiting for Agent C...`)
+    broadcast({ type: 'result_submitted', agent: 'B2', fraudulent: true })
   }
 }
 

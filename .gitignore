@@ -18,3 +18,6 @@ Thumbs.db
 
 # Docs (local only)
 docs/
+
+# Local scripts and notes
+AMP_Demo_Script.md

@@ -11,6 +11,7 @@ import { EscrowManager } from '../core/EscrowManager.js'
 import { Task, RawRates } from '../core/types.js'
 import { runFullValidation } from '../validation/ValidationOrchestrator.js'
 import { log, logValidation, printSection, printSettlement, printRefund } from '../dashboard/Dashboard.js'
+import { broadcast } from '../ws/EventBroadcaster.js'
 
 const RPC     = process.env.SEPOLIA_RPC_URL!
 const USDT    = process.env.USDT_SEPOLIA_ADDRESS!
@@ -30,6 +31,7 @@ export class AgentC {
 
     const usdtBal = await wallet.getUSDTBalance(USDT)
     log('Agent C', `Wallet ready — ${usdtBal} USDT`)
+    broadcast({ type: 'agent_ready', agent: 'C', address: this.address, balance: usdtBal })
     log('Agent C', 'Polling for PENDING_VALIDATION tasks...')
 
     let taskToValidate: Task | null = null
@@ -75,12 +77,18 @@ export class AgentC {
     logValidation('Layer 2  Sanity', verdict.layer2.passed, verdict.layer2.reason)
     logValidation('Layer 3  Claude', verdict.layer3.passed, verdict.layer3.reason)
 
+    broadcast({ type: 'validation_layer', layer: 1, passed: verdict.layer1.passed, detail: verdict.layer1.reason ?? '' })
+    broadcast({ type: 'validation_layer', layer: 2, passed: verdict.layer2.passed, detail: verdict.layer2.reason ?? '' })
+    broadcast({ type: 'validation_layer', layer: 3, passed: verdict.layer3.passed, detail: verdict.layer3.reason ?? '' })
+
     if (verdict.finalVerdict === 'APPROVED') {
       const workerLabel = `${result.workerId.slice(0, 6)}…${result.workerId.slice(-4)}`
       log('Agent C', `Verdict: APPROVED — releasing escrow to ${workerLabel}...`)
       const txHash = await this.escrow.release(task.id, result.workerId)
       this.registry.settleTask(task.id, txHash, verdict)
       printSettlement(txHash, task.reward, workerLabel)
+      broadcast({ type: 'verdict', result: 'APPROVED', reason: '' })
+      broadcast({ type: 'escrow_released', txHash, recipient: result.workerId, amount: task.reward })
     } else {
       const reason = verdict.layer3.reason ?? verdict.layer2.reason ?? 'Validation failed'
       log('Agent C', `Verdict: REJECTED — ${reason}`)
@@ -88,6 +96,8 @@ export class AgentC {
       const txHash = await this.escrow.refund(task.id, task.postedBy)
       this.registry.failTask(task.id, reason, verdict)
       printRefund(txHash, task.reward)
+      broadcast({ type: 'verdict', result: 'REJECTED', reason })
+      broadcast({ type: 'escrow_refunded', txHash, amount: task.reward })
     }
   }
 }

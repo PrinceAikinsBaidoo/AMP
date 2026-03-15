@@ -17,6 +17,7 @@ import { Task, TaskResult, TaskStatus } from '../core/types.js'
 import { executeAgentTask } from '../ai/ClaudeClient.js'
 import { supplyToAave } from '../defi/AaveSupplyService.js'
 import { log, printSection } from '../dashboard/Dashboard.js'
+import { broadcast } from '../ws/EventBroadcaster.js'
 
 const RPC     = process.env.SEPOLIA_RPC_URL!
 const USDT    = process.env.USDT_SEPOLIA_ADDRESS!
@@ -29,6 +30,7 @@ export class AgentB {
   constructor(
     private registry: TaskRegistry,
     private forceInjectBad = false,
+    private delayMs = 0,   // startup delay — set >0 in cycle 2 so B2 wins the race
   ) {}
 
   async run(): Promise<void> {
@@ -37,7 +39,12 @@ export class AgentB {
 
     const usdtBal = await wallet.getUSDTBalance(USDT)
     log('Agent B', `Wallet ready — ${usdtBal} USDT`)
+    broadcast({ type: 'agent_ready', agent: 'B', address: this.address, balance: usdtBal })
     log('Agent B', `Polling for OPEN tasks every ${POLL_MS / 1000}s...`)
+
+    if (this.delayMs > 0) {
+      await sleep(this.delayMs)
+    }
 
     let acceptedTask: Task | null = null
     while (!acceptedTask) {
@@ -46,6 +53,7 @@ export class AgentB {
         acceptedTask = open[0]
         this.registry.acceptTask(acceptedTask.id, this.address)
         log('Agent B', `Task accepted — ID: ${acceptedTask.id.slice(0, 8)}…  Reward: ${acceptedTask.reward} USDT`)
+        broadcast({ type: 'task_accepted', agent: 'B', taskId: acceptedTask.id, reward: acceptedTask.reward })
       } else {
         // Another worker claimed the task — exit gracefully
         const claimed = this.registry.getAllTasks().filter(
@@ -53,6 +61,7 @@ export class AgentB {
         )
         if (claimed.length > 0) {
           log('Agent B', `Lost the race — another worker is handling the task. Standing by.`)
+          broadcast({ type: 'task_lost', agent: 'B' })
           wallet.dispose()
           return
         }
@@ -95,6 +104,7 @@ export class AgentB {
     }
 
     log('Agent B', 'Handing off to Claude — it will decide which protocols to query...')
+    broadcast({ type: 'claude_thinking' })
 
     // Claude reads the task description and calls on-chain tools autonomously
     const { protocols, recommendation, dataSource, toolsInvoked } = await executeAgentTask(
@@ -103,9 +113,11 @@ export class AgentB {
     )
 
     log('Agent B', `Claude invoked tools: ${toolsInvoked.join(', ')}`)
+    broadcast({ type: 'claude_tools', tools: toolsInvoked })
     for (const p of protocols) {
       log('Agent B', `${p.name.padEnd(10)} APY: ${p.supplyAPY.toFixed(4)}%`)
     }
+    broadcast({ type: 'rates_fetched', protocols: protocols.map(p => ({ name: p.name, apy: p.supplyAPY })) })
 
     // ── INJECTION: Wrong protocol (Layer 2 target) ───────────────────────────
     // Override Claude's recommendation to the LOWER-yield option post-fetch.
@@ -120,6 +132,7 @@ export class AgentB {
       log('Agent B', `⚠  Override: recommending ${worst.name} @ ${worst.supplyAPY.toFixed(4)}% (lower-yield — Layer 2 injection)`)
     } else {
       log('Agent B', `Claude recommends: ${recommendation.protocol} @ ${recommendation.apy.toFixed(4)}%`)
+      broadcast({ type: 'claude_recommends', protocol: recommendation.protocol, apy: recommendation.apy })
     }
 
     const result: TaskResult = {
@@ -133,6 +146,7 @@ export class AgentB {
 
     this.registry.submitResult(task.id, result)
     log('Agent B', 'Result submitted — PENDING_VALIDATION. Waiting for Agent C...')
+    broadcast({ type: 'result_submitted', agent: 'B', fraudulent: false })
   }
 
   private waitForOutcome(taskId: string, wallet: WDKClient, timeoutMs = 120_000): Promise<void> {
@@ -143,6 +157,7 @@ export class AgentB {
       const onSettled = async (task: Task) => {
         if (task.id !== taskId) return
         log('Agent B', `Payment received ✅  ${task.reward} USDT`)
+        broadcast({ type: 'payment_received', agent: 'B', amount: task.reward })
 
         // Autonomously supply earnings to Aave — demonstrates the full lending bot loop
         printSection('AGENT B — AUTO-INVESTING EARNINGS IN AAVE V3')
@@ -154,6 +169,7 @@ export class AgentB {
           log('Agent B', `Etherscan: https://sepolia.etherscan.io/tx/${position.supplyTxHash}`)
           log('Agent B', `Aave position — Collateral: $${position.totalCollateralBase}  Health: ${position.healthFactor}`)
           log('Agent B', `Earnings deployed (${position.asset}). Agent B is now earning yield on Aave. ♻`)
+          broadcast({ type: 'aave_supply', agent: 'B', txHash: position.supplyTxHash, collateral: String(position.totalCollateralBase) })
         } catch (err: any) {
           log('Agent B', `⚠ Aave supply failed: ${err.shortMessage ?? err.message}`)
         }

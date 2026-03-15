@@ -14,6 +14,7 @@ import { EscrowManager } from '../core/EscrowManager.js'
 import { Task } from '../core/types.js'
 import { supplyToAave } from '../defi/AaveSupplyService.js'
 import { log, logSuccess, logRejection, printSection } from '../dashboard/Dashboard.js'
+import { broadcast } from '../ws/EventBroadcaster.js'
 
 const RPC          = process.env.SEPOLIA_RPC_URL!
 const USDT         = process.env.USDT_SEPOLIA_ADDRESS!
@@ -38,6 +39,7 @@ export class AgentA {
 
     const usdtBal = await wallet.getUSDTBalance(USDT)
     log('Agent A', `Wallet ready — ${usdtBal} USDT`)
+    broadcast({ type: 'agent_ready', agent: 'A', address: this.address, balance: usdtBal })
 
     if (parseFloat(usdtBal) < parseFloat(REWARD)) {
       throw new Error(`Insufficient balance: ${usdtBal} USDT (need ${REWARD})`)
@@ -51,11 +53,13 @@ export class AgentA {
     })
 
     log('Agent A', `Task posted — ID: ${task.id.slice(0, 8)}…  Reward: ${REWARD} USDT`)
+    broadcast({ type: 'task_posted', taskId: task.id, reward: REWARD, description: this.taskDescription })
     log('Agent A', `Locking ${REWARD} USDT in escrow...`)
 
     const escrowTxHash = await this.escrow.lock(task.id, REWARD, wallet)
     this.registry.setEscrowTxHash(task.id, escrowTxHash)
     log('Agent A', `Escrow locked — tx: ${escrowTxHash.slice(0, 18)}…`)
+    broadcast({ type: 'escrow_locked', txHash: escrowTxHash })
 
     // Wait for the task to reach a terminal state, then act on the outcome
     await this.waitForOutcome(task, wallet)
@@ -71,6 +75,7 @@ export class AgentA {
       const onSettled = async (settled: Task) => {
         if (settled.id !== task.id) return
         logSuccess(`Agent A — task SETTLED. ${REWARD} USDT paid to Agent B.`)
+        broadcast({ type: 'payment_received', agent: 'A', amount: REWARD })
 
         // Act on the validated recommendation — deploy treasury capital
         const protocol = settled.result?.recommendation?.protocol ?? 'aave'
@@ -84,6 +89,7 @@ export class AgentA {
           log('Agent A', `Etherscan: https://sepolia.etherscan.io/tx/${position.supplyTxHash}`)
           log('Agent A', `Aave position — Collateral: $${position.totalCollateralBase}  Health: ${position.healthFactor}`)
           log('Agent A', `Treasury deployed (${position.asset}). Agent A is now earning yield on Aave. ♻`)
+          broadcast({ type: 'aave_supply', agent: 'A', txHash: position.supplyTxHash, collateral: String(position.totalCollateralBase) })
         } catch (err: any) {
           log('Agent A', `⚠ Aave supply failed: ${err.shortMessage ?? err.message}`)
         }

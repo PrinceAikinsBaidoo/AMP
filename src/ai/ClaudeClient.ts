@@ -211,9 +211,15 @@ export async function executeAgentTask(
       })
     }
 
-    // Append assistant turn + tool results and continue loop
+    // Append assistant turn + tool results and continue loop.
+    // Guard: Anthropic rejects user messages with empty content arrays.
+    // If Claude produced no data-fetching tool calls this turn, nudge it to submit.
     messages.push({ role: 'assistant', content: response.content })
-    messages.push({ role: 'user',      content: toolResults })
+    if (toolResults.length > 0) {
+      messages.push({ role: 'user', content: toolResults })
+    } else {
+      messages.push({ role: 'user', content: 'You have enough data. Please call submit_recommendation now.' })
+    }
   }
 }
 
